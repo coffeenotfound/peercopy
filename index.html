@@ -328,6 +328,17 @@
 					{
 						secure: true,
 						debug: 3,
+						config: {
+							'iceServers': [
+								{ url: "stun.l.google.com:19302" },
+								{ url: "stun1.l.google.com:19302" },
+								{ url: "stun2.l.google.com:19302" },
+								{ url: "stun3.l.google.com:19302" },
+								{ url: "stun4.l.google.com:19302" },
+								// TODO: Check if this is secure
+								{ url: 'turn:homeo@turn.bistri.com:80', credential: 'homeo' },
+							]
+						},
 					}
 				);
 				
