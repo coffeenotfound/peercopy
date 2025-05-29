@@ -460,7 +460,8 @@
 										// We have a valid dl channel!
 										
 										// Spawn the transmit logic
-										const CHUNK_SIZE = 1024*1024  // TODO: Tune this
+										// (use max packet size from the browser)
+										const chunkSize = Math.min(conn.peerConnection.sctp.maxMessageSize, 1024*1024)
 										dlChannel.binaryType = "arraybuffer"
 										
 										dlChannel.onopen = () => {
@@ -469,7 +470,7 @@
 											
 											const sendNextChunk = () => {
 												try {
-													const chunkData = file.hostData.slice(fileCursor, fileCursor + CHUNK_SIZE);
+													const chunkData = file.hostData.slice(fileCursor, fileCursor + chunkSize);
 													fileCursor += chunkData.byteLength;
 													
 													// DEBUG:
@@ -493,7 +494,7 @@
 											//  onbufferedamountlow ONLY fires when bufferedAmount
 											//  decreases from ABOVE bufferedAmountLowThreshold
 											//  to below it!
-											dlChannel.bufferedAmountLowThreshold = CHUNK_SIZE/2
+											dlChannel.bufferedAmountLowThreshold = chunkSize/2
 											dlChannel.onbufferedamountlow = () => sendNextChunk()
 											
 											sendNextChunk()
