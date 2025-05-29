@@ -497,6 +497,8 @@
 										const chunkSize = Math.min(conn.peerConnection.sctp.maxMessageSize, 1024*1024)
 										dlChannel.binaryType = "arraybuffer"
 										
+										let channelGotClosed = false;
+										
 										dlChannel.onopen = () => {
 											let file = peercopy.sessFiles[fileIdx]
 											let fileCursor = 0;
@@ -507,18 +509,16 @@
 													fileCursor += chunkData.byteLength;
 													
 													// DEBUG:
-													console.log(`sent dl chunk: ${chunkData.byteLength} bytes`)
-													console.log(`conn: dl channel current buffered: ${dlChannel.bufferedAmount}, lowamount: ${dlChannel.bufferedAmountLowThreshold}`)
+													console.log(`sent dl chunk: ${chunkData.byteLength} bytes, buffered=${dlChannel.bufferedAmount}, state=${dlChannel.readyState}`)
 													
 													dlChannel.send(chunkData)
-													console.log(`buffered after send: ${dlChannel.bufferedAmount} bytes`)
 													
 													if (chunkData.byteLength === 0) {
 														dlChannel.onbufferedamountlow = null
 													}
 												} catch (err) {
 													// DEBUG:
-													console.log(`sendNextChunk failed: ${err}`)
+													console.log(`sendNextChunk failed (channel got closed ${channelGotClosed}): ${err}`)
 												}
 											}
 											
@@ -528,13 +528,18 @@
 											//  decreases from ABOVE bufferedAmountLowThreshold
 											//  to below it!
 											dlChannel.bufferedAmountLowThreshold = chunkSize/2
-											dlChannel.onbufferedamountlow = () => sendNextChunk()
+											dlChannel.onbufferedamountlow = () => {
+												if (!channelGotClosed) {
+													sendNextChunk()
+												}
+											}
 											
 											sendNextChunk()
 										}
 										
 										// DEBUG:
 										dlChannel.onclose = () => {
+											channelGotClosed = true;
 											console.log("dl channel was closed!")
 										}
 									} catch(e) {
@@ -697,7 +702,11 @@
 							},
 							cancel(reason) {
 								// DEBUG:
-								console.log(`ReadableStream got canceled: ${reason}`)
+								console.log(`ReadableStream got canceled:`, reason)
+								
+								// Close the conn to notify the sender
+								// we aren't interested anymore
+								dlConn.close()
 								
 								// TODO: reimplement this
 //								// Call back to main context to
@@ -742,6 +751,7 @@
 								}
 								
 								mainThreadStreamController.enqueue(new Uint8Array(data));
+								
 								if (isDone) {
 									mainThreadStreamController.close();
 								}
