@@ -750,7 +750,15 @@
 			
 			onSessCopyUrlButton() {
 				// Gen session url
-				const url = `localhost:8000/#${this.localPeer.id}:${this.sessKey}`
+				let url = `${window.location.hostname}`
+				
+				const port = window.location.port
+				if (port) {
+					url += `:${port}`
+				}
+				
+				url += `/#${this.localPeer.id}:${this.sessKey}`
+				
 				navigator.clipboard.writeText(url);
 			}
 		}
