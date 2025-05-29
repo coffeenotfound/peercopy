@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+	
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+	<!--<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.14.9/cdn.min.js" defer integrity="sha512-KSdieUYxSxr/laB3Bh5TP8GAng49b2qRfdcnFvh8OuPpPgksA189OQ9v1A3gIz5P9s3A4aXMe5uiHLMfla60Uw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script> -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.14.9/cdn.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+	
+	<script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.3/StreamSaver.min.js"></script>
+	
+	<style>
+		html, body {
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+		}
+		body {
+			/*background: #1d2029;*/
+			background: #181a24;
+			color: #dce1e8;
+			font-family: "Jetbrains Mono";
+		}
+	</style>
+	<script src="sw.js"></script>
+</head>
+<body style="display:flex; flex-flow: column nowrap;">
+	<style>
+		.logo-sep {
+			opacity: 0.5;
+			margin: 0 0.5rem;
+		}
+		
+		.tuibutton {
+			background: none;
+			border: none;
+			padding: 0;
+			font: inherit;
+			cursor: pointer;
+			outline: inherit;
+			
+			color: #c284ff;
+		}
+		.tuibutton:hover {
+			color:#e0c1ff;
+		}
+		.tuibutton:active {
+			transform: translateY(0.05rem);
+		}
+		.tuibutton > span {
+			padding: 0 0.1rem;
+			text-decoration: underline;
+		}
+		
+		.tuitextbox {
+			position: relative;
+		}
+		.tuitextbox > input {
+			width: 100%;
+			
+			background: none;
+			border: none;
+			padding: 0;
+			font: inherit;
+			cursor: pointer;
+			outline: inherit;
+			color: inherit;
+			
+			padding: 0.25rem;
+			/*border: 1px solid rgba(255,255,255,0.1);*/
+		}
+		.tuitextbox::after {
+			position: absolute;
+			content: " ";
+			
+			background: currentColor;
+			
+			width: 100%;
+			height: 1px;
+			
+			left: 0;
+			bottom: 0.1rem;
+		}
+	</style>
+	
+	<marquee style="width:auto; padding:1rem; font-size: 1.15rem;">
+		<span class="logo-sep">=====</span> peercopy <span class="logo-sep">=====</span> anonymous* p2p file transfer service
+		<span class="logo-sep">=====</span> peercopy <span class="logo-sep">=====</span> anonymous* p2p file transfer service
+		<span class="logo-sep">=====</span> peercopy <span class="logo-sep">=====</span> anonymous* p2p file transfer service
+	</marquee>
+	
+	<main x-data style="max-width:720px; min-width:720px; height:100%; margin:0 auto; display:flex; flex-flow:column nowrap;">
+		<!--
+		<div id="session-box" style="margin:1rem; padding:1rem;">
+			<div style="margin-bottom:1rem">
+				<span class="logo-sep" style="margin-left:0;">-----</span> session <span class="logo-sep" style="margin-right:0;">--------------------------------------------</span>
+			</div>
+			
+			<div>
+				<button class="tuibutton" onclick="onNewSessionButton()">[<span>new sess</span>]</button>
+				<button class="tuibutton">[<span>copy url</span>]</button>
+				<button class="tuibutton">[<span>join peer</span></psn></span>]</button>
+			</div>
+			<div style="display:flex; flex-flow:row nowrap; align-items:center;">
+				<span style="margin-right:1rem;">dst:</span>
+				<span class="tuitextbox" style="flex-grow:1;">
+					<input
+						id="joinpeer-id-input"
+						type="text"
+						maxlength="36"
+						placeholder="peerID"
+					/>
+				</span>
+				<button class="tuibutton" onclick="onJoinPeerButton()">[<span>go</span></psn></span>]</button>
+			</div>
+			
+			<div style="margin-top:1rem;">
+				<span>local</span>: <span id="peerid-span" style="color:#f97587">Unconnected</span></span>
+			</div>
+			<div>
+				<span>peers</span>: <span id="peerid-span" style="color:#f97587">Unconnected</span></span>
+			</div>
+		</div>
+		-->
+		
+		<div id="screen-init" style="flex-grow:1; display:flex; flex-flow:row nowrap; justify-content:center; align-items:center; font-size:1rem;">
+			<button class="tuibutton" onclick="onSendButton()">[<span>send</span>]</button>
+			<span style="margin:1rem; opacity:1;">or</span>
+			<button class="tuibutton" onclick="onRecvButton()">[<span>recv</span>]</button>
+		</div>
+		
+		<div id="screen-send" style="display:none; flex-flow:column nowrap;">
+			<span>SENDING FILES</span>
+			
+			<div style="margin-top:1rem;">
+				<span>local</span>: <span id="peerid-span" style="color:#f97587">Unconnected</span></span>
+				<button class="tuibutton" onclick="onCopyUrlButton()">[<span>copy url</span>]</button>
+			</div>
+			
+			<div id="send-filelist">
+				<div class="files-header">
+					<div>name</div>
+					<div>mtime</div>
+					<div>size</div>
+				</div>
+			</div>
+		</div>
+		
+		<div style="margin-top:auto; padding:0.5rem; padding-top:1rem; display: flex; flex-flow:row nowrap; justify-content:center;">
+			<span style="opacity:0.33; font-size:0.9rem;">cookie disclaimer: this website does not store any cookies. local storage is used for essential data only.</span>
+		</div>
+	</main>
+	
+	<style>
+		#send-filelist {
+			display: grid;
+			grid-template-rows: auto;
+			row-gap: 0.5rem;
+		}
+		.files-header, .files-row {
+			display: grid;
+			grid-template-columns: 1fr 200px 100px;
+			gap: 1rem;
+			align-items: center;
+		}
+	</style>
+	
+	
+	<script>
+		/*
+		// Listen to new connections
+		peer.on('connection', function(conn) {
+			// Wait for new connection to be established
+			conn.on('open', function() {
+				// Receive messages
+				conn.on('data', function(data) {
+					console.log('Received', data);
+				});
+				
+				// Send messages
+				conn.send('Hello!');
+			});
+		});
+		*/
+		
+		/** Generates a random 60 bit base62 key */
+		function randKey() {
+			const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+			// Get UUID and remove hyphens
+			const hex = crypto.randomUUID()
+					.replace(/-/g, '')
+					.slice(0, 15); // 15 hex digits = 60 bits
+			
+			// Convert hex to BigInt
+			let num = BigInt('0x' + hex);
+			
+			let result = '';
+			for (let i = 0; i < 10; i++) {
+				const rem = num % 62n;
+				result = chars[Number(rem)] + result;
+				num = num / 62n;
+			}
+			return result;
+		}
+		
+		
+		// Send stream data to the service worker
+		/*
+		navigator.serviceWorker.ready.then(reg => {
+			const channel = new MessageChannel();
+			
+			reg.active.postMessage('start-download', [channel.port2]);
+			
+			console.log("BEFORE DL")
+			
+			const a = document.createElement('a');
+			a.href = '/download';
+			a.download = 'streamed.txt';
+			a.click();
+			
+			console.log("BEFORE DL CLICK")
+			
+			// Push data through port1
+			const writer = channel.port1;
+			let i = 0;
+			const interval = setInterval(() => {
+				if (i >= 10) {
+					writer.postMessage({ done: true });
+					clearInterval(interval);
+					return;
+				}
+				writer.postMessage({ chunk: `Chunk ${i}\n` });
+				i++;
+			}, 1000);
+		});
+		*/
+		
+		function changeScreen() {}
+		
+		var sess = null
+		
+		class Session {
+			isInited = false;
+			isSender;
+			fileObjs;
+			peer;
+			sessKey;
+			
+			senderId;
+			
+			/** Creates a new sender session */
+			static NewSenderSession(fileObjs) {
+				var sess = new Session()
+				sess.isSender = true
+				sess.fileObjs = fileObjs
+				sess.sessKey = randKey()
+				
+				sess._initPeerAsync();
+				return sess
+			}
+			
+			/** Creates a new receiver session */
+			static NewReceiverSession(dstId, dstKey) {
+				this.isSender = false
+				this.fileObjs = []
+				this.sessKey = dstKey
+				
+				this._initPeerAsync();
+			}
+			
+			_initPeerAsync() {
+				this.peer = new Peer(
+					// DEBUG: Keep same id for testing purposes
+					window.name,
+					{
+						secure: true,
+						debug: 3,
+					}
+				);
+				
+				const sess = this
+				
+				this.peer.on('open', function(id) {
+					console.log(`New peer has id: ${id}`);
+					// DEBUG:
+					if (!window.name) {
+						window.name = id;
+					}
+					
+					const idSpan = document.getElementById("peerid-span")
+					idSpan.innerHTML = `${id} (key ${sess.sessKey})`
+					idSpan.style.color = "#14b2ff"
+					
+					// Set inited
+					sess.isInited = true;
+				})
+			}
+		}
+		
+		async function pickFiles() {
+			const fileInput = document.createElement('input');
+			fileInput.type = 'file';
+			fileInput.multiple = true;
+			
+			return new Promise((resolve) => {
+				fileInput.onchange = () => resolve(fileInput.files);
+				fileInput.click();
+			});
+		}
+		
+		/*
+		function saveFile(name, arrayBuffer) {
+			const blob = new Blob([arrayBuffer]);
+			const url = URL.createObjectURL(blob);
+			
+			const a = document.createElement('a');
+			a.style.display = "none";
+			a.href = url;
+			a.download = name;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			
+			URL.revokeObjectURL(url);
+		}
+		
+		function startStreamedDownload(filename) {
+			let controller;
+			const stream = new ReadableStream({
+				start(c) {
+					controller = c;
+				},
+				type: "bytes",
+			});
+			
+			const blobUrl = URL.createObjectURL(new Response(stream, {
+				headers: { 'Content-Type': 'application/octet-stream' }
+			}).blob());
+			
+			const a = document.createElement('a');
+			a.href = blobUrl;
+			a.download = filename;
+			a.click();
+			
+			return {
+				write(chunk) {
+					controller.enqueue(chunk);
+				},
+				close() {
+					controller.close();
+					URL.revokeObjectURL(blobUrl);
+				},
+				abort(reason) {
+					controller.error(reason);
+					URL.revokeObjectURL(blobUrl);
+				}
+			};
+		}
+		*/
+		
+		async function onSendButton() {
+			//Alpine.store("router", "send-main")
+			
+			// Ask user for files to serve
+			var pickedFiles = await pickFiles();
+			
+			console.log("user selected files:");
+			for (f of pickedFiles) {
+				console.log(`* ${f.name}`);
+			}
+			
+			// Read in all file data now (instead of on file request time)
+			const pickedFileArray = Array.from(pickedFiles);
+			const files = await Promise.all(
+				pickedFileArray.map(async file => ({
+					filename: file.name,
+					byteSize: file.size,
+					mtime: new Date(file.lastModified),
+					hostData: await file.arrayBuffer(),
+				}))
+			);
+			
+			console.log("read in files:")
+			for (f of pickedFiles) {
+				console.log(`* ${f.name}`);
+			}
+			
+			// Change screens
+			document.getElementById("screen-init").style.display = "none"
+			document.getElementById("screen-send").style.display = "flex"
+			
+			const filelistElem = document.getElementById("send-filelist")
+			
+			var idx = 0;
+			for (f of files) {
+				console.log(`* ${f.name}`);
+				
+				filelistElem.innerHTML += `
+					<div class="files-row">
+						<button class="files-fname" onclick="onFileClicked(${idx})">${f.filename}</button> <span>${f.mtime}</span> <span>${f.byteSize} bytes</span>
+					</div>
+				`
+				idx += 1;
+			}
+			
+			// Create peer
+			sess = Session.NewSenderSession(files)
+		}
+		
+		function onRecvButton() {
+		
+		}
+		
+		function tryStartReceiveSession(dstId, dstKey) {
+			if (!sess) {
+				sess = Session.NewReceiverSession()
+				
+				// Listen to new connections
+				peer.on('connection', function(conn) {
+					// Wait for new connection to be established
+					conn.on('open', function() {
+						// Receive messages
+						conn.on('data', function(data) {
+							console.log('Received', data);
+						});
+						
+						// Send messages
+						conn.send('Hello!');
+					});
+				});
+			}
+		}
+		
+		function onFileClicked(fileIdx) {
+			const file = sess.fileObjs[fileIdx]
+			
+			// If we're the sender, just save the file
+			if (sess.isSender) {
+				//saveFile(file.name, file.loadedData)
+				/*
+				const con = startStreamedDownload(file.name)
+				con.write(file.hostData)
+				con.close()
+				*/
+				
+				/*
+				var stream = new ReadableStream({});
+				
+				const a: HTMLLinkElement = document.createElement('a');
+				a.href
+				a.download = name;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				*/
+				
+				/*
+				var dlStream = streamSaver.createWriteStream(
+					file.filename,
+					{ size: file.byteSize },
+				)
+				writer = dlStream.getWriter()
+				
+				window.addEventListener("unload", () => {
+					writer.abort()
+				})
+				
+				writer.write(file.hostData)
+				writer.close()
+				*/
+			}
+			// If we're recv, request the file data from the sender
+			else {
+			
+			}
+		}
+		
+		function onCopyUrlButton() {
+			const url = `localhost:8000/#${sess.peer.id}@${sess.sessKey}`
+			navigator.clipboard.writeText(url);
+		}
+		
+		// --- Main logic ---
+		// Make sure changes in the url fragment
+		// trigger a reload
+		window.addEventListener('hashchange', () => {
+			location.reload();
+		});
+		
+		navigator.serviceWorker.register('sw.js').then(() => {
+			console.log('SW registered');
+		});
+		
+		// If we are on a session url, try to connect
+		if (location.hash) {
+			const [dstId, dstKey] = location.hash.split("@")
+		}
+		
+		/*
+		function onNewSessionButton() {
+			const input = document.createElement('input');
+			input.type = 'file';
+			input.onchange = (event) => {
+				const file = event.target.files[0];
+				console.log(file);
+			};
+			input.click();
+			
+			console.log("selected files for new session:");
+			for (f of input.files) {
+				console.log(`got file: ${f.name}`);
+			}
+		}
+		
+		function onJoinPeerButton() {
+			const idInput = document.getElementById("joinpeer-id-input")
+			console.log("trying to join peer: idInput")
+		}
+		*/
+	</script>
+</body>
+</html>
