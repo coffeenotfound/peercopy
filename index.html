@@ -254,12 +254,15 @@
 			isInSession = false;
 			isSender = null;
 			localPeer = null;
+			/** @type ?RTCPeerConnection */
+			rtcPeer2SenderConn = null;
 			localPeerInitedPromise = null
 			connsFromReceivers = []
 			//connToPeer = null;
 			localPeerInited = false;
 			sessKey = null;
 			sessFiles = null;
+			senderPeerId = null;
 			
 			initPageSync() {
 				// Register service worker
@@ -289,6 +292,7 @@
 				// Set state
 				this.isSender = false;
 				this.sessKey = dstKey;
+				this.senderPeerId = dstPeerId;
 				
 				// Start local peer
 				this.startLocalPeer();
@@ -303,11 +307,13 @@
 					const conn = this.localPeer.connect(dstPeerId, {
 						metadata: {
 							key: dstKey,
+							init: 1,
 						},
 						//serialization: "raw",
 						serialization: "binary",
 						reliable: true,
 					})
+					this.rtcPeer2SenderConn = conn.peerConnection;
 					this.regConnEvents(conn)
 				})()
 			}
@@ -345,15 +351,6 @@
 					// Handle connections from receivers
 					if (this.isSender) {
 						this.localPeer.on("connection", conn => {
-							// DEBUG:
-							console.log(`GOT NEW CONNECTION FROM RECEIVER: ${conn.peer}`)
-							
-							// Add to list
-							this.connsFromReceivers.push(conn)
-							
-							// Reg events
-							this.regConnEvents(conn)
-							
 							// Wait for conn to establish
 							conn.on("open", () => {
 								// Only accept connections if the
@@ -364,17 +361,150 @@
 									return;
 								}
 								
-								// Send HostIndex to new receiver
-								let msg = {
-									mid: MID_HOST_INDEX,
-									files: this.sessFiles.map(f => ({
-										filename: f.filename,
-										mtime: f.mtime.toJSON(),
-										byteSize: f.byteSize,
-									})),
+								// Metadata connection
+								if (conn.metadata.init) {
+									// DEBUG:
+									console.log(`GOT NEW CONNECTION FROM RECEIVER: ${conn.peer}`)
+									
+									// Add to list
+									this.connsFromReceivers.push(conn)
+									
+									// Reg events
+									this.regConnEvents(conn)
+									
+									// Send HostIndex to new receiver
+									let msg = {
+										mid: MID_HOST_INDEX,
+										files: this.sessFiles.map(f => ({
+											filename: f.filename,
+											mtime: f.mtime.toJSON(),
+											byteSize: f.byteSize,
+										})),
+									}
+									conn.send(msg)
 								}
-								conn.send(msg)
+//								// Download connections
+//								else if (conn.metadata.dl) {
+//									// DEBUG:
+//									console.log(`GOT new download conn from: ${conn.peer}`);
+//
+//									const fileIdx = Number(conn.metadata.dl.fileIdx);
+//
+//									const CHUNK_SIZE = 65535
+//
+//									const rtcChannel = conn.dataChannel;
+//									rtcChannel.bufferedAmountLowThreshold = CHUNK_SIZE // TODO: Tune this
+//
+//									{// Spawn the transmit logic
+//										let file = peercopy.sessFiles[fileIdx]
+//										let fileCursor = 0;
+//
+//										rtcChannel.onbufferedamountlow = () => {
+//											const chunkData = file.hostData.slice(fileCursor, fileCursor + CHUNK_SIZE);
+//											fileCursor += CHUNK_SIZE;
+//
+//											if (chunkData.length > 0) {
+//												conn.send({
+//													chunk: chunkData
+//												})
+//											} else {
+//												rtcChannel.onbufferedamountlow = null
+//											}
+//										};
+//									}
+//								}
 							});
+							
+							// Listen to download conns
+							// NOTE: This is a dirty hack to avoid
+							//  peerjs from fucking with our manually
+							//  created channels.
+							//  Only call their event listener if it'
+							//  not one of our channels
+							const prevOnDataChannel = conn.peerConnection.ondatachannel
+							conn.peerConnection.ondatachannel = (event) => {
+								const dlChannel = event.channel;
+								
+								peercopy.testKeepChannelAlive = dlChannel;
+								
+								// DEBUG:
+								console.log(`got new dl channel: ${dlChannel.label} (id ${dlChannel.id}})`)
+								
+								try {
+									// Try parse channel label as json,
+									// if it succeeds we have a raw dl channel
+									const labelPayload = JSON.parse(dlChannel.label)
+									
+									try {
+										if (labelPayload.key !== this.sessKey) {
+											throw new Error("wrong key")
+										}
+										
+										// Try get valid dlIdx
+										const fileIdx = Number(labelPayload.dlIdx);
+										if (fileIdx < 0 || fileIdx >= this.sessFiles.length) {
+											throw new Error("invalid dlIdx")
+										}
+										
+										// We have a valid dl channel!
+										
+										// Spawn the transmit logic
+										const CHUNK_SIZE = 1024*1024  // TODO: Tune this
+										dlChannel.binaryType = "arraybuffer"
+										
+										dlChannel.onopen = () => {
+											let file = peercopy.sessFiles[fileIdx]
+											let fileCursor = 0;
+											
+											const sendNextChunk = () => {
+												try {
+													const chunkData = file.hostData.slice(fileCursor, fileCursor + CHUNK_SIZE);
+													fileCursor += chunkData.byteLength;
+													
+													// DEBUG:
+													console.log(`sent dl chunk: ${chunkData.byteLength} bytes`)
+													console.log(`conn: dl channel current buffered: ${dlChannel.bufferedAmount}, lowamount: ${dlChannel.bufferedAmountLowThreshold}`)
+													
+													dlChannel.send(chunkData)
+													console.log(`buffered after send: ${dlChannel.bufferedAmount} bytes`)
+													
+													if (chunkData.byteLength === 0) {
+														dlChannel.onbufferedamountlow = null
+													}
+												} catch (err) {
+													// DEBUG:
+													console.log(`sendNextChunk failed: ${err}`)
+												}
+											}
+											
+											// IMPORTANT: bufferedAmountLowThreshold NEEDS to be
+											//  smaller than the chunks we're sending because
+											//  onbufferedamountlow ONLY fires when bufferedAmount
+											//  decreases from ABOVE bufferedAmountLowThreshold
+											//  to below it!
+											dlChannel.bufferedAmountLowThreshold = CHUNK_SIZE/2
+											dlChannel.onbufferedamountlow = () => sendNextChunk()
+											
+											sendNextChunk()
+										}
+										
+										// DEBUG:
+										dlChannel.onclose = () => {
+											console.log("dl channel was closed!")
+										}
+									} catch(e) {
+										// DEBUG:
+										console.log("conn: dl channel error")
+										
+										dlChannel.close();
+									}
+								} catch (e) {
+									// DEBUG:
+									console.log("conn: probably not a dl channel")
+									
+									prevOnDataChannel(event)
+								}
+							}
 						});
 					}
 				});
@@ -448,6 +578,7 @@
 							filename: file.name,
 							byteSize: file.size,
 							mtime: new Date(file.lastModified),
+							/** @type ?ArrayBuffer */
 							hostData: await file.arrayBuffer(),
 						}))
 					);
@@ -476,9 +607,101 @@
 				console.log(`clicked file: ${fileIdx}`)
 				
 				{
-					let file = this.sessFiles[fileIdx]
+					let file = this.sessFiles[fileIdx];
+					
+					(async () => {
+						// Open new rtc channel for the download
+						const dlConn = this.rtcPeer2SenderConn.createDataChannel(
+							`{"key":"${this.sessKey}","dlIdx":${fileIdx}}`,
+							{
+								ordered: true,
+							}
+						);
+						dlConn.binaryType = "arraybuffer";
+						
+						// Get the service worker
+						const channel = new MessageChannel();
+						const ourPort = channel.port1;
+						let isDone = false;
+						let bytesReceived = 0;
+						
+						// Listen to download cancel notification from sw
+						ourPort.onmessage = (ev) => {
+							console.log(`msg from sw: ${ev.data}`)
+							if (ev.data.canceled) {
+								// Close the channel on local canceled download
+								// to tell sender we don't want further data
+								dlConn.close()
+							}
+						}
+						
+						// Listen for data from the sender
+						dlConn.onmessage = (ev) => {
+							/** @type ArrayBuffer */
+							const data = ev.data;
+							
+							// DEBUG:
+							console.log(`dl: got chunk from sender: ${data} len=${data.byteLength}`)
+							
+							if (!isDone) {
+								let msg = { chunk: data }
+								
+								bytesReceived += data.byteLength;
+								if (bytesReceived >= file.byteSize) {
+									console.log("GOT enough bytes, dl is done!")
+									isDone = true;
+									msg.done = true;
+								}
+								
+								ourPort.postMessage(msg)
+							}
+							
+//							if (data.byteLength === 0) {
+//								isDone = true;
+//								ourPort.postMessage({ done: true })
+//
+//								// Close the conn on the receiver side
+//								// when download is done.
+//								// We do this on the receiver side because
+//								// the sender doesn't know whether we
+//								// actually got all the sent data yet
+//								dlConn.close()
+//							} else {
+//								ourPort.postMessage({ chunk: data })
+//							}
+						}
+						dlConn.onclose = () => {
+							console.log("dl stream closed")
+							if (!isDone) {
+								ourPort.postMessage({ error: true })
+							}
+						}
+						
+						// DEBUG:
+						console.log(`created dl conn: ${dlConn}`)
+						
+						// Tell service worker
+						const sw = (await navigator.serviceWorker.ready).active
+						sw.postMessage({
+							msg: "start-dl",
+							fileIdx: fileIdx,
+							fileByteSize: file.byteSize,
+						}, [channel.port2]);
+						
+						// Start download
+						// TODO: Give the SW some time to get the stream object started
+						setTimeout(() => {
+							const a = document.createElement('a');
+							a.href = `/dl/${fileIdx}`;
+							a.download = file.filename;
+							a.click();
+						}, 10)
+						
+					})();
 					
 					navigator.serviceWorker.ready.then(reg => {
+						
+						/*
 						const channel = new MessageChannel();
 						
 						reg.active.postMessage({
@@ -520,6 +743,7 @@
 							writer.postMessage({chunk: `Chunk ${i}\n`});
 							i++;
 						}, 1000);
+						*/
 					});
 				}
 			}

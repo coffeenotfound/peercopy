@@ -1,11 +1,16 @@
 
-self.addEventListener('fetch', event => {
-	if (new URL(event.request.url).pathname === '/dl') {
-		event.respondWith(new Response('', { status: 200 }));
-	}
+// Force immediate sw update
+self.addEventListener('install', (event) => {
+	self.skipWaiting(); // Activate the new SW immediately
+});
+self.addEventListener('activate', (event) => {
+	event.waitUntil(
+		self.clients.claim() // Take control of all clients (tabs)
+	);
 });
 
-self.activeDownloadStreamsByFileIdx = {};
+//self.activeDownloadStreamsByFileIdx = {};
+self.lastDownloadStream = null
 
 self.addEventListener('message', e => {
 	if (e.data.msg === "start-dl") {
@@ -17,47 +22,47 @@ self.addEventListener('message', e => {
 		const stream = new ReadableStream({
 			start(controller) {
 				port.onmessage = ({data}) => {
-					let removeFromDir = false;
+					// DEBUG:
+					console.log(`SW: got msg: ${JSON.stringify(data)} (${data.chunk.byteLength} bytes)`)
+					
 					if (data.error) {
 						controller.error(data.error);
-						removeFromDir = true;
-					} else if (data.done) {
-						controller.close();
-						removeFromDir = true
 					} else {
-						controller.enqueue(new TextEncoder().encode(data.chunk));
-					}
-					
-					if (removeFromDir) {
-						delete self.activeDownloadStreamsByFileIdx[fileIdx];
+						const chunk = new Uint8Array(data.chunk);
+						controller.enqueue(chunk);
+						
+						if (data.done) {
+							console.log("DL DONE, calling ReadableStream.close()")
+							controller.close();
+						}
 					}
 				};
 			},
 			cancel(reason) {
 				// DEBUG:
-				console.log(`canceled stream: ${reason}`)
+				console.log(`ReadableStream got canceled: ${reason}`)
 				
 				// Call back to main context to
 				// notify about canceled download
 				// so we can notify to sender to
 				// stop sending bytes
 				port.postMessage({
-					msg: "dl-canceled",
-					fileIdx: fileIdx
+					"canceled": true,
 				})
 			},
 		});
 		
 		const response = new Response(stream, {
 			headers: {
-				'Content-Type': 'text/plain',
+				'Content-Type': 'application/octet-stream',
 				'Content-Disposition': 'attachment',
 				'Content-Length': String(fileByteSize),
 			}
 		});
 		
 		// Add to dir of active downloads
-		self.activeDownloadStreamsByFileIdx[fileIdx] = response;
+//		self.activeDownloadStreamsByFileIdx[fileIdx] = response;
+		self.lastDownloadStream = response;
 	}
 });
 
@@ -72,8 +77,11 @@ self.addEventListener('fetch', e => {
 		// DEBUG:
 		console.log("intercepted dl request: ", match[1])
 		
-		const fileIdx = Number(match[1]);
-		e.respondWith(self.activeDownloadStreamsByFileIdx[fileIdx]);
+//		const fileIdx = Number(match[1]);
+//		const stream = self.activeDownloadStreamsByFileIdx[fileIdx]
+		const stream = self.lastDownloadStream
+		e.respondWith(stream);
+		self.lastDownloadStream = null;
 		//e.respondWith(new Response('', { status: 200 }));
 	}
 });
