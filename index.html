@@ -19,6 +19,9 @@
 			padding: 0;
 		}
 		body {
+			min-width: 720px;
+			min-height: 720px;
+			
 			/*background: #1d2029;*/
 			background: #181a24;
 			color: #dce1e8;
@@ -29,6 +32,14 @@
 </head>
 <body style="display:flex; flex-flow: column nowrap;">
 	<style>
+		/**
+		 * Used to specify `display: flex` in combination
+		 * with x-show, because x-show overrides the inline display style
+		 */
+		[display-flex] {
+			display: flex;
+		}
+		
 		.logo-sep {
 			opacity: 0.5;
 			margin: 0 0.5rem;
@@ -91,8 +102,29 @@
 		<span class="logo-sep">=====</span> peercopy <span class="logo-sep">=====</span> anonymous* p2p file transfer service
 		<span class="logo-sep">=====</span> peercopy <span class="logo-sep">=====</span> anonymous* p2p file transfer service
 	</marquee>
+	<!-- <div>
+		<span id="version-tag" style="display:none;"></span>
+		<script>
+			fetch("/version.txt").then(async (res) => {
+				const versionText = await res.text()
+				const elem = document.getElementById("version-tag");
+				elem.innerHTML = `v${versionText}`;
+				elem.style.display = "inline"
+			})
+		</script>
+	</div> -->
 	
-	<main x-data style="max-width:720px; min-width:720px; height:100%; margin:0 auto; display:flex; flex-flow:column nowrap;">
+	<!--
+	<div
+		x-data="{ version: null }"
+		x-show="version"
+		x-init="version = await (await fetch('/version.txt')).text();"
+	>
+		<span style="opacity:0.5;">v</span><span x-text="version"></span>
+	</div>
+	-->
+	
+	<main style="max-width:720px; min-width:720px; height:100%; margin:0 auto; display:flex; flex-flow:column nowrap;" id="site-main">
 		<!--
 		<div id="session-box" style="margin:1rem; padding:1rem;">
 			<div style="margin-bottom:1rem">
@@ -126,33 +158,22 @@
 		</div>
 		-->
 		
-		<div id="screen-init" style="flex-grow:1; display:flex; flex-flow:row nowrap; justify-content:center; align-items:center; font-size:1rem;">
-			<button class="tuibutton" onclick="peercopy.onSendButton()">[<span>send</span>]</button>
-			<span style="margin:1rem; opacity:1;">or</span>
-			<button class="tuibutton" onclick="peercopy.onReceiveButton()">[<span>recv</span>]</button>
-		</div>
-		
-		<div id="screen-send" style="display:none; flex-flow:column nowrap;">
-			<span>SENDING FILES</span>
-			
-			<div style="margin-top:1rem;">
-				<span>local</span>: <span id="peerid-span" style="color:#f97587">Unconnected</span></span>
-				<button class="tuibutton" onclick="peercopy.onSessCopyUrlButton()">[<span>copy url</span>]</button>
+		<template x-if="!$store.g.showSessionScreen">
+			<div id="start-screen" style="display:flex; flex-grow:1; flex-flow:row nowrap; justify-content:center; align-items:center; font-size:1rem;">
+				<button class="tuibutton" onclick="peercopy.onSendButton()">[<span>send</span>]</button>
+				<span style="margin:1rem; opacity:1;">or</span>
+				<button class="tuibutton" onclick="peercopy.onReceiveButton()">[<span>recv</span>]</button>
 			</div>
-			
-			<div id="send-filelist">
-				<div class="files-header">
-					<div>name</div>
-					<div>mtime</div>
-					<div>size</div>
-				</div>
-			</div>
-		</div>
+		</template>
 		
-		<div style="margin-top:auto; padding:0.5rem; padding-top:1rem; display: flex; flex-flow:row nowrap; justify-content:center;">
-			<span style="opacity:0.33; font-size:0.9rem;">cookie disclaimer: this website does not store any cookies. local storage is used for essential data only.</span>
-		</div>
+		<template x-if="$store.g.showSessionScreen">
+		
+		</template>
 	</main>
+	
+	<div style="margin-top:auto; padding:0.5rem; padding-top:1rem; display: flex; flex-flow:row nowrap; justify-content:center;">
+		<span style="opacity:0.33; font-size:0.9rem;">cookie disclaimer: this website does not store any cookies. local storage is used for essential data only.</span>
+	</div>
 	
 	<style>
 		#send-filelist {
@@ -579,16 +600,38 @@
 							}));
 							
 							// Change to sess screen
-							this.changeToSessionScreen();
+							this.switchToSessionScreen();
 						}
 					}
 				})
 			}
 			
-			changeToSessionScreen() {
-				// Change screen
-				document.getElementById("screen-init").style.display = "none"
-				document.getElementById("screen-send").style.display = "flex"
+			switchToSessionScreen() {
+				
+				/*
+				// Delete old shit
+				document.getElementById("screen-init").remove()
+				
+				const mainElem = document.getElementById("site-main")
+				
+				mainElem.insertAdjacentHTML("beforeend", `
+					<div id="screen-send" style="display:flex; flex-flow:column nowrap;">
+						<span>SENDING FILES</span>
+						
+						<div style="margin-top:1rem;">
+							<span>local</span>: <span id="peerid-span" style="color:#f97587">Unconnected</span></span>
+							<button class="tuibutton" onclick="peercopy.onSessCopyUrlButton()">[<span>copy url</span>]</button>
+						</div>
+						
+						<div id="send-filelist">
+							<div class="files-header">
+								<div>name</div>
+								<div>mtime</div>
+								<div>size</div>
+							</div>
+						</div>
+					</div>
+				`)
 				
 				// Build file list
 				const filelistElem = document.getElementById("send-filelist")
@@ -604,6 +647,7 @@
 					`
 					idx += 1;
 				}
+				*/
 			}
 			
 			onSendButton() {
@@ -644,7 +688,7 @@
 					this.startLocalPeer()
 					
 					// Change screen
-					this.changeToSessionScreen()
+					this.switchToSessionScreen()
 				})()
 			}
 			
@@ -674,7 +718,7 @@
 						// Get the service worker
 						const channel = new MessageChannel();
 						const ourPort = channel.port1;
-						let isDone = false;
+						let isDoneOrErrored = false;
 						let bytesReceived = 0;
 						
 						const swIsReady = createDeferred();
@@ -740,19 +784,19 @@
 							// DEBUG:
 							console.log(`dl: got chunk from sender: ${data} len=${data.byteLength}`)
 							
-							if (!isDone) {
+							if (!isDoneOrErrored) {
 								let msg = { chunk: data }
 								
 								bytesReceived += data.byteLength;
 								if (bytesReceived >= file.byteSize) {
 									console.log("GOT enough bytes, dl is done!")
-									isDone = true;
+									isDoneOrErrored = true;
 									msg.done = true;
 								}
 								
 								mainThreadStreamController.enqueue(new Uint8Array(data));
 								
-								if (isDone) {
+								if (isDoneOrErrored) {
 									mainThreadStreamController.close();
 								}
 //								ourPort.postMessage(msg)
@@ -772,11 +816,13 @@
 //								ourPort.postMessage({ chunk: data })
 //							}
 						}
-						dlConn.onclose = () => {
+						dlConn.onclosing = () => {
 							console.log("dl stream closed")
-							if (!isDone) {
-								ourPort.postMessage({ error: true })
-							}
+							try {
+								mainThreadStreamController.cancel("dl stream got closed")
+							} catch(e) {}
+							
+							isDoneOrErrored = true;
 						}
 						
 						// DEBUG:
@@ -811,53 +857,6 @@
 							}
 						})
 					})();
-					
-					navigator.serviceWorker.ready.then(reg => {
-						
-						/*
-						const channel = new MessageChannel();
-						
-						reg.active.postMessage({
-							msg: "start-dl",
-							fileIdx: fileIdx,
-							//fileByteSize: file.byteSize,
-							fileByteSize: 250,
-						}, [channel.port2]);
-						
-						// Listen to return msgs (mostly cancel download)
-						channel.port1.onmessage = (m) => {
-							if (m.data.msg === "dl-canceled") {
-								const fileIdx = m.data.fileIdx;
-								console.log(`WS signaled dl cancel: fileidx ${fileIdx}`)
-								// TODO:
-							}
-						}
-						
-						// DEBUG:
-						console.log("BEFORE DL")
-						
-						const a = document.createElement('a');
-						a.href = `/dl/${fileIdx}`;
-						a.download = file.filename;
-						a.click();
-						
-						// DEBUG:
-						console.log("BEFORE DL CLICK")
-						
-						// Push data through port1
-						const writer = channel.port1;
-						let i = 0;
-						const interval = setInterval(() => {
-							if (i >= 50) {
-								writer.postMessage({done: true});
-								clearInterval(interval);
-								return;
-							}
-							writer.postMessage({chunk: `Chunk ${i}\n`});
-							i++;
-						}, 1000);
-						*/
-					});
 				}
 			}
 			
@@ -937,7 +936,7 @@
 //				})
 //			}
 //		}
-		
+
 //		async function onSendButton() {
 //			//Alpine.store("router", "send-main")
 //
@@ -1006,7 +1005,7 @@
 //				});
 //			}
 //		}
-		
+
 //		function onFileClicked(fileIdx) {
 //			const file = sess.fileObjs[fileIdx]
 //
@@ -1050,7 +1049,7 @@
 //
 //			}
 //		}
-		
+
 //		function onCopyUrlButton() {
 //			const url = `localhost:8000/#${sess.peer.id}@${sess.sessKey}`
 //			navigator.clipboard.writeText(url);
