@@ -158,7 +158,7 @@
 		</div>
 		-->
 		
-		<template x-if="!$store.g.showSessionScreen">
+		<template x-data x-if="!$store.g.showSessionScreen">
 			<div id="start-screen" style="display:flex; flex-grow:1; flex-flow:row nowrap; justify-content:center; align-items:center; font-size:1rem;">
 				<button class="tuibutton" onclick="peercopy.onSendButton()">[<span>send</span>]</button>
 				<span style="margin:1rem; opacity:1;">or</span>
@@ -166,8 +166,42 @@
 			</div>
 		</template>
 		
-		<template x-if="$store.g.showSessionScreen">
-		
+		<template x-data x-if="$store.g.showSessionScreen">
+			<div id="session-screen" style="display:flex; flex-flow:column nowrap;">
+				<span>SENDING FILES</span>
+				
+				<div style="margin-top:1rem;">
+					<span>local</span>:
+					<span :style=`color:${$store.g.localPeerIdColor}` x-text="$store.g.localPeerIdStr"></span>
+					<button class="tuibutton" onclick="peercopy.onSessCopyUrlButton()">[<span>copy url</span>]</button>
+				</div>
+				
+				<div id="receiver-list" style="margin-top:2rem;">
+					<p>receivers:</p>
+					<ul>
+						<li x-show="$store.g.receivers.length === 0"><em>none</em></li>
+						<template x-for="r in $store.g.receivers">
+							<li xt-text="r.peerId"></li>
+						</template>
+					</ul>
+				</div>
+				
+				<div id="send-filelist" style="margin-top:2rem;">
+					<div class="files-header">
+						<div>name</div>
+						<div>mtime</div>
+						<div>size</div>
+					</div>
+					
+					<template x-for="(f, fidx) in $store.g.files">
+						<div class="files-row">
+							<button class="files-fname" @click="peercopy.onFileClick(fidx)" x-text="f.filename"></button>
+							<span x-text="f.mtime"></span>
+							<span x-text="f.size"></span>
+						</div>
+					</template>
+				</div>
+			</div>
 		</template>
 	</main>
 	
@@ -189,8 +223,22 @@
 		}
 	</style>
 	
-	
 	<script>
+		document.addEventListener('alpine:init', () => {
+			Alpine.store('g', {
+				showSessionScreen: false,
+				localPeerIdStr: "unknown",
+				localPeerIdColor: "#f97587",
+				files: [],
+				receivers: [],
+				
+				initLocalPeerId(id) {
+					this.localPeerIdStr = id
+					this.localPeerIdColor = "#14b2ff"
+				}
+			})
+		})
+		
 		/*
 		// Listen to new connections
 		peer.on('connection', function(conn) {
@@ -236,6 +284,18 @@
 				fileInput.onchange = () => resolve(fileInput.files);
 				fileInput.click();
 			});
+		}
+		
+		function formatByteSize(bytes) {
+			const units = ['byte', 'kiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+			let i = 0;
+			while (bytes >= 1024 && i < units.length - 1) {
+				bytes /= 1024;
+				i++;
+			}
+			// keep bytes without a decimal place
+			const mag = (i === 0 ? bytes.toFixed(0) : bytes.toFixed(1))
+			return `${mag} ${units[i]}`;
 		}
 		
 		// Send stream data to the service worker
@@ -405,9 +465,7 @@
 	//						window.name = id;
 	//					}
 						
-						const idSpan = document.getElementById("peerid-span")
-						idSpan.innerHTML = `${id} (key ${this.sessKey})`
-						idSpan.style.color = "#14b2ff"
+						Alpine.store("g").initLocalPeerId(id)
 						
 						this.localPeerInited = true;
 						resolve()
@@ -433,6 +491,12 @@
 									
 									// Add to list
 									this.connsFromReceivers.push(conn)
+									
+									// Add alpine state
+									const ag = Alpine.store("g")
+									if (!ag.receivers.find(r => r.peerId === conn.peer)) {
+										ag.receivers.push({ peerId: conn.peer })
+									}
 									
 									// Reg events
 									this.regConnEvents(conn)
@@ -479,6 +543,14 @@
 //									}
 //								}
 							});
+							conn.onclosing = () => {
+								const ag = Alpine.store("g")
+								//ag.receivers = ag.receivers.filter(r => r.peerId !== conn.peer)
+//								const idx = ag.receivers.findIndex(r => r.peerId === conn.peer)
+//								if (idx >= 0) {
+//									ag.receivers.
+//								}
+							};
 							
 							// Listen to download conns
 							// NOTE: This is a dirty hack to avoid
@@ -607,6 +679,16 @@
 			}
 			
 			switchToSessionScreen() {
+				// Update alpine state
+				const g = Alpine.store("g")
+				
+				g.showSessionScreen = true;
+				
+				g.files = this.sessFiles.map(f => ({
+					filename: f.filename,
+					mtime: f.mtime.toJSON(),
+					size: formatByteSize(f.byteSize),
+				}));
 				
 				/*
 				// Delete old shit
